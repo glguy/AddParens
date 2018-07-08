@@ -11,12 +11,12 @@ Maintainer  : emertens@gmail.com
 import Data.Generics (Data, everywhere, extT, mkT)
 -- haskell-src-exts
 import Language.Haskell.Exts (Exp(..), Type(..), Mode(OneLineMode), PPLayout(PPNoLayout),
-                              Style(mode), PPHsMode(layout), ParseResult(..),
-                              Pretty, SrcLoc(..),
-                              parseExp, parseModule, parseType,
+                              Style(mode), PPHsMode(layout), ParseResult(..), Module,
+                              Pretty, SrcLoc(..), SrcSpanInfo(..), Parseable(parse),
                               prettyPrintStyleMode, defaultMode, style)
 -- base
 import System.Environment (getArgs)
+import Data.Proxy (Proxy(Proxy))
 import Text.Printf (printf)
 
 ------------------------------------------------------------------------
@@ -40,7 +40,7 @@ addParensType1 x@TyApp{}               = TyParen () x
 addParensType1 (TyParen _ x@TyParen{}) = x
 addParensType1 x                       = x
 
--- | Recursively apply 'addParensExp1' throughout a whole expression.
+-- | Recursively parenthesize the expressions and types in a given value.
 addParens :: Data d => d -> d
 addParens = everywhere (mkT addParensExp1 `extT` addParensType1)
             -- bottom up rewrite using syb
@@ -52,15 +52,19 @@ addParens = everywhere (mkT addParensExp1 `extT` addParensType1)
 -- | Transform a Haskell expression to have parentheses making precedence
 -- more obvious.
 explicitParens ::
-  (Functor f, Pretty (f ()), Data (f ())) =>
-  (String -> ParseResult (f a)) {- ^ parse function                 -} ->
-  String                        {- ^ parser input string            -} ->
-  String                        {- ^ rendered, parenthesized output -}
-explicitParens parse str =
-  render $
-  do e <- parse str
-     let e' = () <$ e -- forget source position annotations
-     return (addParens e')
+  Functor f                 => -- functor used to remove source locations
+  Parseable (f SrcSpanInfo) => -- parsable with source locations
+  Pretty    (f ())          => -- printable without source locations
+  Data      (f ())          => -- supports generic traversals
+  proxy f {- ^ proxy for specifying syntax elements to process -} ->
+  String  {- ^ parser input string                             -} ->
+  String  {- ^ rendered, parenthesized output                  -}
+explicitParens pxy = render . fmap (addParens . forgetAnn pxy) . parse
+
+-- | Forget the source location annotations. The extra proxy argument
+-- is to help type inference along in the implementation of 'explicitParens'.
+forgetAnn :: Functor f => proxy f -> f SrcSpanInfo -> f ()
+forgetAnn _proxy x = () <$ x
 
 -- | Pretty print a syntax element on a single line using explicit layout.
 flatPrettyPrint :: Pretty a => a -> String
@@ -81,7 +85,7 @@ main :: IO ()
 main =
   do args <- getArgs
      case args of
-       []         -> interact (explicitParens parseExp   )
-       ["module"] -> interact (explicitParens parseModule)
-       ["type"]   -> interact (explicitParens parseType  )
+       []         -> interact (explicitParens (Proxy :: Proxy Exp   ))
+       ["module"] -> interact (explicitParens (Proxy :: Proxy Module))
+       ["type"]   -> interact (explicitParens (Proxy :: Proxy Type  ))
        _          -> putStrLn "usage: AddParens [module|type]"
