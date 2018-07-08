@@ -8,13 +8,15 @@ Maintainer  : emertens@gmail.com
 -}
 
 -- syb
-import Data.Generics (everywhere, extT, mkT)
+import Data.Generics (Data, everywhere, extT, mkT)
 -- haskell-src-exts
 import Language.Haskell.Exts (Exp(..), Type(..), Mode(OneLineMode), PPLayout(PPNoLayout),
                               Style(mode), PPHsMode(layout), ParseResult(..),
-                              Pretty, SrcLoc(..), defaultMode, paren, parseExp,
-                              prettyPrintStyleMode, style)
+                              Pretty, SrcLoc(..),
+                              parseExp, parseModule, parseType,
+                              prettyPrintStyleMode, defaultMode, style)
 -- base
+import System.Environment (getArgs)
 import Text.Printf (printf)
 
 ------------------------------------------------------------------------
@@ -25,10 +27,10 @@ import Text.Printf (printf)
 -- and remove redundant parentheses. This rule only operates on the top-level
 -- of a particular expression.
 addParensExp1 :: Exp () -> Exp ()
-addParensExp1 x@InfixApp{}        = paren x -- add parentheses to infix application
-addParensExp1 x@App{}             = paren x -- add parentheses to prefix application
-addParensExp1 (Paren _ x@Paren{}) = x       -- remove nested parentheses
-addParensExp1 x                   = x       -- otherwise no transformation
+addParensExp1 x@InfixApp{}        = Paren () x -- add parentheses to infix application
+addParensExp1 x@App{}             = Paren () x -- add parentheses to prefix application
+addParensExp1 (Paren _ x@Paren{}) = x          -- remove nested parentheses
+addParensExp1 x                   = x          -- otherwise no transformation
 
 -- | Apply same logic from 'addParensExp1' to types found in the expression.
 addParensType1 :: Type () -> Type ()
@@ -39,9 +41,9 @@ addParensType1 (TyParen _ x@TyParen{}) = x
 addParensType1 x                       = x
 
 -- | Recursively apply 'addParensExp1' throughout a whole expression.
-addParensExp :: Exp () -> Exp ()
-addParensExp = everywhere (mkT addParensExp1 `extT` addParensType1)
-               -- bottom up rewrite using syb
+addParens :: Data d => d -> d
+addParens = everywhere (mkT addParensExp1 `extT` addParensType1)
+            -- bottom up rewrite using syb
 
 ------------------------------------------------------------------------
 -- Program logic -------------------------------------------------------
@@ -49,12 +51,16 @@ addParensExp = everywhere (mkT addParensExp1 `extT` addParensType1)
 
 -- | Transform a Haskell expression to have parentheses making precedence
 -- more obvious.
-explicitParens :: String -> String
-explicitParens str =
+explicitParens ::
+  (Functor f, Pretty (f ()), Data (f ())) =>
+  (String -> ParseResult (f a)) {- ^ parse function                 -} ->
+  String                        {- ^ parser input string            -} ->
+  String                        {- ^ rendered, parenthesized output -}
+explicitParens parse str =
   render $
-  do e <- parseExp str
+  do e <- parse str
      let e' = () <$ e -- forget source position annotations
-     return (addParensExp e')
+     return (addParens e')
 
 -- | Pretty print a syntax element on a single line using explicit layout.
 flatPrettyPrint :: Pretty a => a -> String
@@ -69,5 +75,13 @@ render (ParseOk x) = flatPrettyPrint x
 render (ParseFailed (SrcLoc _ line col) err) = printf "(%d:%d): %s" line col err
 
 -- | Parse an expression from stdin and write the transformed version to stdout.
+-- Either @module@ or @type@ can optionally be specified as a command line argument
+-- to pick an alternative parser.
 main :: IO ()
-main = interact explicitParens
+main =
+  do args <- getArgs
+     case args of
+       []         -> interact (explicitParens parseExp   )
+       ["module"] -> interact (explicitParens parseModule)
+       ["type"]   -> interact (explicitParens parseType  )
+       _          -> putStrLn "usage: AddParens [module|type]"
