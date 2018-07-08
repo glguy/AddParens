@@ -33,8 +33,9 @@ addParensExp1 x                   = x       -- otherwise no transformation
 -- | Apply same logic from 'addParensExp1' to types found in the expression.
 addParensType1 :: Type () -> Type ()
 addParensType1 x@TyInfix{}             = TyParen () x
+addParensType1 x@TyFun{}               = TyParen () x
 addParensType1 x@TyApp{}               = TyParen () x
-addParensType1 (TyParen _ x@TyParen{}) = x       -- remove nested parentheses
+addParensType1 (TyParen _ x@TyParen{}) = x
 addParensType1 x                       = x
 
 -- | Recursively apply 'addParensExp1' throughout a whole expression.
