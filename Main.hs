@@ -8,9 +8,9 @@ Maintainer  : emertens@gmail.com
 -}
 
 -- syb
-import Data.Generics (everywhere, mkT)
+import Data.Generics (everywhere, extT, mkT)
 -- haskell-src-exts
-import Language.Haskell.Exts (Exp(..), Mode(OneLineMode), PPLayout(PPNoLayout),
+import Language.Haskell.Exts (Exp(..), Type(..), Mode(OneLineMode), PPLayout(PPNoLayout),
                               Style(mode), PPHsMode(layout), ParseResult(..),
                               Pretty, SrcLoc(..), defaultMode, paren, parseExp,
                               prettyPrintStyleMode, style)
@@ -30,9 +30,17 @@ addParensExp1 x@App{}             = paren x -- add parentheses to prefix applica
 addParensExp1 (Paren _ x@Paren{}) = x       -- remove nested parentheses
 addParensExp1 x                   = x       -- otherwise no transformation
 
+-- | Apply same logic from 'addParensExp1' to types found in the expression.
+addParensType1 :: Type () -> Type ()
+addParensType1 x@TyInfix{}             = TyParen () x
+addParensType1 x@TyApp{}               = TyParen () x
+addParensType1 (TyParen _ x@TyParen{}) = x       -- remove nested parentheses
+addParensType1 x                       = x
+
 -- | Recursively apply 'addParensExp1' throughout a whole expression.
 addParensExp :: Exp () -> Exp ()
-addParensExp = everywhere (mkT addParensExp1) -- bottom up rewrite using syb
+addParensExp = everywhere (mkT addParensExp1 `extT` addParensType1)
+               -- bottom up rewrite using syb
 
 ------------------------------------------------------------------------
 -- Program logic -------------------------------------------------------
