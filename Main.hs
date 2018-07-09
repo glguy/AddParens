@@ -12,12 +12,12 @@ import Data.Generics (Data, everywhere, extT, mkT)
 -- haskell-src-exts
 import Language.Haskell.Exts (Exp(..), Type(..), Mode(OneLineMode), PPLayout(PPNoLayout),
                               Style(mode), PPHsMode(layout), ParseResult(..), Module,
-                              Pretty, SrcLoc(..), SrcSpanInfo(..), Parseable(parse),
-                              prettyPrintStyleMode, defaultMode, style)
+                              Pretty, SrcSpanInfo(..), Parseable(parseWithMode),
+                              ParseMode(..), glasgowExts,
+                              defaultMode, defaultParseMode, prettyPrintStyleMode, style)
 -- base
 import System.Environment (getArgs)
 import Data.Proxy (Proxy(Proxy))
-import Text.Printf (printf)
 
 ------------------------------------------------------------------------
 -- Rewrite rule for adding parentheses around all applications ---------
@@ -73,10 +73,18 @@ flatPrettyPrint =
     style       { mode   = OneLineMode }
     defaultMode { layout = PPNoLayout  }
 
+-- | Parse using @stdin@ as the filename and with lots of GHC extensions enabled.
+parse :: Parseable a => String -> ParseResult a
+parse =
+  parseWithMode
+    defaultParseMode
+      { parseFilename = "stdin"
+      , extensions = glasgowExts }
+
 -- | Render successful parses and parser error messages
 render :: Pretty a => ParseResult a -> String
-render (ParseOk x) = flatPrettyPrint x
-render (ParseFailed (SrcLoc _ line col) err) = printf "(%d:%d): %s" line col err
+render (ParseOk x)           = flatPrettyPrint x
+render (ParseFailed pos err) = flatPrettyPrint pos ++ " " ++ err
 
 -- | Parse an expression from stdin and write the transformed version to stdout.
 -- Either @module@ or @type@ can optionally be specified as a command line argument
