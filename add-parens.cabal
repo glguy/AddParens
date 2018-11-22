@@ -21,7 +21,7 @@ cabal-version:       >=1.10
 
 executable AddParens
   main-is:             Main.hs
-  build-depends:       base             >= 4.10 && < 4.12,
+  build-depends:       base             >= 4.10 && < 4.13,
                        haskell-src-exts == 1.20.*,
                        syb              == 0.7.*
   default-language:    Haskell2010
